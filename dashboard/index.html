@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Phát Hiện Lỗi Vải & May Mặc</title>
+    <meta name="description" content="Hệ thống AI phát hiện và phân vùng lỗi vải trên sản phẩm may mặc công nghiệp sử dụng DINOv2 PatchCore + SAM2 + InternVL2">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-title">
+                <i class="fas fa-tshirt header-icon"></i>
+                <h1>HỆ THỐNG PHÁT HIỆN LỖI VẢI VÀ SẢN PHẨM MAY MẶC <span class="header-sub">(CAPTIONING + VQA — MULTIMODAL AI)</span></h1>
+            </div>
+            <div class="controls">
+                <label class="btn btn-primary" for="file-upload" id="upload-btn">
+                    <i class="fas fa-upload"></i> Tải ảnh lên
+                    <input type="file" id="file-upload" accept="image/*" style="display:none">
+                </label>
+                <button class="btn btn-outline" id="camera-btn"><i class="fas fa-camera"></i> Mở camera</button>
+                <select class="select-box" id="fabric-type">
+                    <option value="">Chọn loại vải</option>
+                    <option value="cotton">Vải cotton</option>
+                    <option value="denim">Vải denim / Jean</option>
+                    <option value="silk">Lụa / Vải mỏng</option>
+                    <option value="wool">Len / Vải dày</option>
+                    <option value="synthetic">Vải tổng hợp</option>
+                    <option value="knit">Vải thun / Dệt kim</option>
+                    <option value="leather">Da tổng hợp</option>
+                    <option value="carpet">Thảm / Vải dày</option>
+                </select>
+                <select class="select-box" id="ai-model">
+                    <option value="full">Full Pipeline (4 Stage)</option>
+                    <option value="stage1">Chỉ Stage 1 (Nhanh)</option>
+                    <option value="stage12">Stage 1+2 (Có Mask)</option>
+                </select>
+                <button class="btn btn-primary btn-search" id="analyze-btn">
+                    <i class="fas fa-microscope"></i> Phân tích
+                </button>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <!-- Row 1: Input + Detection + AI Description -->
+            <div class="card col-span-1" id="card-input">
+                <h2 class="card-title"><i class="fas fa-image icon-blue"></i> Ảnh đầu vào</h2>
+                <div class="image-container" id="input-image-container">
+                    <img id="input-image" src="" alt="Ảnh vải đầu vào" class="image-preview"
+                         onerror="this.src='https://placehold.co/400x400/e2e8f0/94a3b8?text=Chọn+ảnh+vải'">
+                    <div class="image-placeholder" id="input-placeholder">
+                        <i class="fas fa-tshirt placeholder-icon"></i>
+                        <span>Tải ảnh vải lên</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card col-span-2" id="card-detection">
+                <h2 class="card-title"><i class="fas fa-search-plus icon-purple"></i> Phát hiện lỗi</h2>
+                <div class="image-container defect-container" id="defect-image-container">
+                    <img id="defect-image" src="" alt="Phát hiện lỗi" class="image-preview"
+                         onerror="this.src='https://placehold.co/800x400/e2e8f0/94a3b8?text=Kết+quả+phân+tích'">
+                    <div class="defect-placeholder" id="defect-placeholder">
+                        <i class="fas fa-expand-arrows-alt placeholder-icon"></i>
+                        <span>Kết quả phân vùng lỗi sẽ hiển thị tại đây</span>
+                    </div>
+                    <!-- Defect labels on image -->
+                    <div class="defect-label label-red" style="top:22%; left:28%">Thủng lỗ</div>
+                    <div class="defect-label label-purple" style="top:12%; left:50%">Xổ chỉ</div>
+                    <div class="defect-label label-orange" style="top:35%; left:60%">Loang màu</div>
+                    <div class="defect-label label-green" style="top:55%; left:20%">Lỗi dệt</div>
+                    <!-- Defect details popup -->
+                    <div class="defect-details-popup">
+                        <h3><i class="fas fa-clipboard-list"></i> Đặc điểm lỗi</h3>
+                        <div class="detail-row"><span>Số lượng lỗi</span> <strong id="d-count">3</strong></div>
+                        <div class="detail-row"><span>Loại lỗi chính</span> <strong id="d-type">Thủng / Xổ chỉ</strong></div>
+                        <div class="detail-row"><span>Diện tích lỗi</span> <strong id="d-area">6.2%</strong></div>
+                        <div class="detail-row"><span>Độ tin cậy (%)</span> <strong id="d-conf">87%</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card col-span-1" id="card-ai-desc">
+                <h2 class="card-title"><i class="fas fa-robot icon-green"></i> Kết quả mô tả AI</h2>
+                <div class="text-content" id="ai-caption-text">
+                    <p>Hệ thống AI đã phân tích và phát hiện <strong>3 vùng lỗi</strong> trên tấm vải cotton. Lỗi chính bao gồm: <em>thủng lỗ</em> đường kính ~5mm ở vùng trung tâm, <em>xổ chỉ</em> dài khoảng 8mm ở góc trên và <em>loang màu</em> nhẹ ở cạnh phải.</p>
+                    <p>Mức độ nghiêm trọng tổng thể: <strong>Major</strong>. Khuyến nghị không xuất xưởng, cần chuyển sang tổ QC để kiểm tra thủ công và xử lý hoặc loại bỏ sản phẩm.</p>
+                </div>
+            </div>
+
+            <!-- Row 2: Product Info + Summary + Chatbot -->
+            <div class="card col-span-1" id="card-product-info">
+                <h2 class="card-title"><i class="fas fa-tag icon-blue"></i> Thông tin vải</h2>
+                <ul class="info-list">
+                    <li><span>Loại vải:</span> <strong id="info-fabric">Vải cotton</strong></li>
+                    <li><span>Màu sắc:</span> <strong id="info-color">Trắng</strong></li>
+                    <li><span>Kích thước gốc:</span> <strong>2048 × 2048px</strong></li>
+                    <li><span>Định dạng:</span> <strong>.png</strong></li>
+                    <li><span>Mục tiêu KT:</span> <strong>Toàn bộ bề mặt</strong></li>
+                    <li><span>Diện tích lỗi:</span> <strong>6.2%</strong></li>
+                    <li><span>Mã cuộn vải:</span> <strong>VD: F-2024-001</strong></li>
+                    <li><span>Trạng thái:</span> <strong class="status-fail">❌ Không đạt</strong></li>
+                </ul>
+            </div>
+
+            <div class="card col-span-3 flex-card" id="card-summary-chat">
+                <div class="summary-section">
+                    <h2 class="card-title"><i class="fas fa-layer-group icon-purple"></i> Tổng hợp lỗi</h2>
+                    <div class="defect-summary-list">
+                        <div class="summary-item summary-header">Loại lỗi phát hiện</div>
+                        <div class="summary-item"><span class="dot dot-red"></span> Thủng lỗ (hole)</div>
+                        <div class="summary-item"><span class="dot dot-purple"></span> Xổ chỉ (yarn)</div>
+                        <div class="summary-item"><span class="dot dot-orange"></span> Loang màu (stain)</div>
+                        <div class="summary-item"><span class="dot dot-blue"></span> Lỗi dệt (weave)</div>
+                        <div class="summary-item"><span class="dot dot-gray"></span> Xơ vải (pilling)</div>
+                    </div>
+                </div>
+                <div class="chat-section">
+                    <h2 class="card-title"><i class="fas fa-comments icon-green"></i> Chatbot hỏi đáp AI</h2>
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="message user-message">Lỗi này có thể tái chế không?</div>
+                            <div class="message ai-message">
+                                <i class="fas fa-robot bot-icon"></i>
+                                Vải bị thủng lỗ và xổ chỉ thường không thể phục hồi về trạng thái ban đầu. Tuy nhiên, có thể tái sử dụng làm vải lót hoặc vật liệu phụ nếu diện tích lỗi nhỏ hơn 5%.
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <input type="text" id="chat-input" placeholder="Hỏi về lỗi vải, tiêu chuẩn kiểm tra, cách xử lý...">
+                            <button class="send-btn" id="send-btn"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 3: Quality + Table + Alerts + Stats -->
+            <div class="card col-span-1" id="card-quality">
+                <h2 class="card-title"><i class="fas fa-star-half-alt icon-yellow"></i> Đánh giá chất lượng</h2>
+                <div class="quality-eval">
+                    <div class="eval-row">
+                        <span class="eval-label">Trạng thái</span>
+                        <div class="status-badges">
+                            <span class="badge badge-success">Đạt</span> / <span class="badge badge-danger">Không đạt</span>
+                        </div>
+                    </div>
+                    <div class="eval-row">
+                        <span class="eval-label">Mức độ lỗi</span>
+                        <div class="severity-bars">
+                            <div class="bar bar-green" title="Minor"></div>
+                            <div class="bar bar-yellow" title="Major"></div>
+                            <div class="bar bar-red active" title="Critical"></div>
+                        </div>
+                    </div>
+                    <div class="eval-row">
+                        <span class="eval-label">Diện tích lỗi</span>
+                        <strong>6.2% bề mặt</strong>
+                    </div>
+                    <div class="eval-row">
+                        <span class="eval-label">Thống kê lỗi</span>
+                        <strong>Có 3 vùng lỗi</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card col-span-1" id="card-table">
+                <h2 class="card-title"><i class="fas fa-table icon-blue"></i> So sánh dữ liệu lỗi</h2>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Loại lỗi</th>
+                            <th>SL</th>
+                            <th>Diện tích</th>
+                            <th>Tin cậy</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="dot dot-red"></span> Thủng lỗ</td><td>1</td><td>3.1%</td><td>91.2</td></tr>
+                        <tr><td><span class="dot dot-purple"></span> Xổ chỉ</td><td>1</td><td>1.8%</td><td>85.0</td></tr>
+                        <tr><td><span class="dot dot-orange"></span> Loang màu</td><td>1</td><td>1.3%</td><td>78.5</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card col-span-1" id="card-alerts">
+                <h2 class="card-title"><i class="fas fa-bell icon-red"></i> Cảnh báo hệ thống</h2>
+                <div class="alerts-container">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Phát hiện lỗi thủng lỗ — Không đạt xuất xưởng
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-circle"></i> Lỗi xổ chỉ — Cần kiểm tra thủ công
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> Hiệu năng AI ổn định — AUROC: 98.2%
+                    </div>
+                </div>
+            </div>
+
+            <div class="card col-span-1" id="card-charts">
+                <h2 class="card-title"><i class="fas fa-chart-bar icon-green"></i> Thống kê lỗi vải</h2>
+                <div class="charts-container">
+                    <div class="chart-wrapper"><canvas id="defectPieChart"></canvas></div>
+                    <div class="chart-wrapper"><canvas id="defectBarChart"></canvas></div>
+                    <div class="chart-wrapper"><canvas id="defectLineChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
