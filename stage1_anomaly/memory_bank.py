@@ -16,6 +16,11 @@ from configs.base_config import DEVICE
 from configs.stage1_config import stage1_config
 
 
+def _sq_dists(pool: np.ndarray, point: np.ndarray, pool_norms_sq: np.ndarray) -> np.ndarray:
+    """||pool[i] - point||² dùng dot product — không tạo array N×D trung gian."""
+    return pool_norms_sq - 2.0 * (pool @ point) + float(point @ point)
+
+
 class MemoryBank:
     """
     Lưu coreset của patch embeddings từ ảnh pass.
@@ -38,7 +43,7 @@ class MemoryBank:
         self.max_samples   = max_samples   or cfg_mem["max_samples"]
         self.k_nearest     = k_nearest     or cfg_ano["k_nearest"]
         self.aggregation   = cfg_ano["score_aggregation"]   # "max" | "mean"
-        self.use_gpu       = use_gpu and torch.cuda.is_available()
+        self.use_gpu       = use_gpu and torch.cuda.is_available() and hasattr(faiss, "StandardGpuResources")
 
         self.bank: Optional[np.ndarray] = None   # (N, D) float32
         self.index = None                         # faiss index
@@ -65,31 +70,42 @@ class MemoryBank:
 
     def _coreset_sample(self, vectors: np.ndarray) -> np.ndarray:
         """
-        Greedy coreset: chọn subset sao cho coverage tốt nhất.
-        Nếu số lượng nhỏ hơn ngưỡng thì giữ nguyên.
+        Fast coreset: random subsample → greedy trên subset nhỏ.
+        Tránh O(N²) khi N lớn (>50K).
         """
         n_total  = len(vectors)
-        n_target = min(
-            int(n_total * self.coreset_ratio),
-            self.max_samples,
-        )
+        n_target = min(int(n_total * self.coreset_ratio), self.max_samples)
 
         if n_target >= n_total:
             return vectors
 
-        # Random init — chọn 1 điểm đầu tiên ngẫu nhiên
-        rng      = np.random.default_rng(42)
-        selected = [rng.integers(n_total)]
-        dists    = np.full(n_total, np.inf)
+        # Bước 1: Random subsample xuống tối đa 50K để greedy có coverage tốt hơn
+        GREEDY_LIMIT = 50_000
+        rng = np.random.default_rng(42)
+        if n_total > GREEDY_LIMIT:
+            pool_idx = rng.choice(n_total, size=GREEDY_LIMIT, replace=False)
+            pool     = vectors[pool_idx]
+        else:
+            pool     = vectors
+            pool_idx = np.arange(n_total)
+
+        n_pool = len(pool)
+
+        # Bước 2: Greedy coreset dùng ||a-b||² = ||a||² - 2a·b + ||b||²
+        # Tránh broadcast N×D gây OOM (391MB với N=50K, D=2048)
+        pool_norms_sq = (pool * pool).sum(axis=1)  # (N,) — tính 1 lần
+
+        first    = rng.integers(n_pool)
+        selected = [first]
+        dists    = _sq_dists(pool, pool[first], pool_norms_sq)
 
         for _ in range(n_target - 1):
-            # Khoảng cách từ mỗi điểm đến điểm đã chọn gần nhất
-            last    = vectors[selected[-1]]
-            d       = np.linalg.norm(vectors - last, axis=1)
-            dists   = np.minimum(dists, d)
-            selected.append(int(np.argmax(dists)))
+            idx   = int(np.argmax(dists))
+            selected.append(idx)
+            d     = _sq_dists(pool, pool[idx], pool_norms_sq)
+            dists = np.minimum(dists, d)
 
-        return vectors[selected]
+        return pool[selected]
 
     def _build_index(self):
         """Tạo FAISS index (GPU nếu có, CPU fallback)."""

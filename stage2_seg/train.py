@@ -192,13 +192,13 @@ def train(args):
         ds,
         batch_size  = TRAIN_BATCH_SIZE,
         shuffle     = True,
-        num_workers = NUM_WORKERS,
+        num_workers = 0,   # Windows: phải là 0
         collate_fn  = _collate,
     )
 
-    # Load Stage 1 để lấy score map làm prompt
-    console.print("[Stage2] Loading Stage 1 PatchCore...")
-    stage1 = PatchCore(category=category)
+    # Load Stage 1 trên CPU — chỉ cần score map, tránh chiếm VRAM của SAM2
+    console.print("[Stage2] Loading Stage 1 PatchCore (CPU)...")
+    stage1 = PatchCore(category=category, device="cpu")
     stage1.load()
 
     # Khởi tạo SAM2 + LoRA
@@ -213,14 +213,23 @@ def train(args):
         lr           = LEARNING_RATE,
         weight_decay = WEIGHT_DECAY,
     )
+    # bfloat16 không cần loss scaling (khác float16) — disable scaler
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=NUM_EPOCHS - WARMUP_EPOCHS
     )
 
+    # SAM2 official: dùng bfloat16 (Ampere GPU) + tf32
+    use_amp = DEVICE == "cuda"
+    if use_amp:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     console.print(f"\n[bold]Stage 2 — Fine-tune SAM2 LoRA[/bold]")
     console.print(f"Category  : {category}")
     console.print(f"Epochs    : {NUM_EPOCHS}  |  Batch: {TRAIN_BATCH_SIZE}  |  LR: {LEARNING_RATE}")
+    console.print(f"AMP       : {'bfloat16' if use_amp else 'disabled'}")
     console.print(f"Loss      : BCE×{BCE_LOSS_WEIGHT} + Dice×{DICE_LOSS_WEIGHT}\n")
 
     t0 = time.time()
@@ -229,57 +238,61 @@ def train(args):
         epoch_loss = 0.0
 
         for images, masks, paths in dl:
-            batch_loss = torch.tensor(0.0, device=DEVICE)
+            optimizer.zero_grad()
+            step_loss = 0.0
 
             for img_np, gt_mask_np, path in zip(images, masks, paths):
-                # Lấy anomaly score map từ Stage 1
-                result     = stage1.predict(path)
-                score_map  = result["score_map"]   # (H, W) float32
+                result    = stage1.predict(path)
+                score_map = result["score_map"]
 
-                # SAM2 forward (với gradient qua LoRA)
-                h, w      = img_np.shape[:2]
-                prompt    = model.score_map_to_prompt(score_map, (h, w))
+                h, w   = img_np.shape[:2]
+                prompt = model.score_map_to_prompt(score_map, (h, w))
                 if not prompt:
                     continue
 
-                model.predictor.set_image(img_np)
-                # Lấy raw logits để tính loss
-                sparse_emb, dense_emb = model.predictor.model.sam_prompt_encoder(
-                    points = (
-                        torch.from_numpy(prompt["point_coords"]).unsqueeze(0).to(DEVICE),
-                        torch.from_numpy(prompt["point_labels"]).unsqueeze(0).to(DEVICE),
-                    ) if "point_coords" in prompt else None,
-                    boxes  = torch.from_numpy(prompt["box"]).unsqueeze(0).to(DEVICE)
-                            if "box" in prompt else None,
-                    masks  = None,
-                )
+                sam_model = model.predictor.model
 
-                feats = model.predictor._features
-                low_res_logits, _ = model.predictor.model.sam_mask_decoder(
-                    image_embeddings  = feats["image_embed"],
-                    image_pe          = model.predictor.model.sam_prompt_encoder.get_dense_pe(),
-                    sparse_prompt_embeddings = sparse_emb,
-                    dense_prompt_embeddings  = dense_emb,
-                    multimask_output = False,
-                )
+                # Toàn bộ forward trong bfloat16 autocast — SAM2 official pattern
+                with torch.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
+                    features, img_pe = model.encode_for_training(img_np)
 
-                # Upsample logit về kích thước gốc
-                logit_up = F.interpolate(
-                    low_res_logits, size=(h, w), mode="bilinear", align_corners=False
-                )
+                    with torch.no_grad():
+                        sparse_emb, dense_emb = sam_model.sam_prompt_encoder(
+                            points=(
+                                torch.from_numpy(prompt["point_coords"]).float().unsqueeze(0).to(DEVICE),
+                                torch.from_numpy(prompt["point_labels"]).float().unsqueeze(0).to(DEVICE),
+                            ) if "point_coords" in prompt else None,
+                            boxes=torch.from_numpy(prompt["box"]).float().unsqueeze(0).to(DEVICE)
+                                  if "box" in prompt else None,
+                            masks=None,
+                        )
 
-                gt_tensor = torch.from_numpy(gt_mask_np).unsqueeze(0).to(DEVICE)
-                loss      = seg_loss(logit_up, gt_tensor)
-                batch_loss = batch_loss + loss
+                    low_res_logits, _, _, _ = sam_model.sam_mask_decoder(
+                        image_embeddings=features["image_embed"],
+                        image_pe=img_pe,
+                        sparse_prompt_embeddings=sparse_emb,
+                        dense_prompt_embeddings=dense_emb,
+                        multimask_output=False,
+                        repeat_image=False,
+                        high_res_features=features["high_res_feats"],
+                    )
 
-            if batch_loss.item() > 0:
-                optimizer.zero_grad()
-                batch_loss.backward()
+                    logit_up  = F.interpolate(
+                        low_res_logits.float(),   # cast float32 trước khi tính loss
+                        size=(h, w), mode="bilinear", align_corners=False,
+                    )
+                    gt_tensor = torch.from_numpy(gt_mask_np).unsqueeze(0).to(DEVICE)
+                    loss      = seg_loss(logit_up, gt_tensor)
+
+                loss.backward()   # backward ngay sau mỗi ảnh (batch_size=1)
+                step_loss += loss.item()
+
+            if step_loss > 0:
+                torch.nn.utils.clip_grad_norm_(model.image_encoder.parameters(), max_norm=1.0)
                 optimizer.step()
 
-            epoch_loss += batch_loss.item()
+            epoch_loss += step_loss
 
-        # Warmup: giữ LR cố định, sau đó dùng cosine
         if epoch > WARMUP_EPOCHS:
             scheduler.step()
 

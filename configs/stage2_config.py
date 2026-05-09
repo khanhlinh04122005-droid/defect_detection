@@ -4,14 +4,14 @@ from configs.base_config import WEIGHTS_DIR, CHECKPOINT_DIR, CATEGORY
 SAM2_MODEL_SIZE  = "large"     # "tiny" | "small" | "base_plus" | "large"
                                # large = tốt nhất, vẫn chạy được trên 3090/4090
 SAM2_WEIGHTS     = f"{WEIGHTS_DIR}/sam2/sam2_hiera_large.pt"
-SAM2_CONFIG      = "sam2_hiera_l.yaml"   # Config đi kèm SAM2
+SAM2_CONFIG      = "configs/sam2.1/sam2.1_hiera_l.yaml"   # SAM2.1 checkpoint
 
 # LoRA adapter
 LORA_RANK        = 16          # Rank của LoRA (8–32 là hợp lý)
 LORA_ALPHA       = 32          # Scale factor = alpha / rank
 LORA_DROPOUT     = 0.1
 # Module nào trong SAM2 được inject LoRA
-LORA_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "out_proj"]
+LORA_TARGET_MODULES = ["qkv", "proj"]   # SAM2 Hiera backbone dùng tên này
 
 
 # Stage 1 trả về anomaly score map → Stage 2 dùng làm prompt cho SAM2
@@ -25,10 +25,10 @@ POINT_LABEL      = 1           # 1 = foreground (vùng lỗi), 0 = background
 PROMPT_THRESHOLD = 0.40        # Chỉ lấy điểm có score > 40%
 
 # Fine-tune LoRA
-TRAIN_BATCH_SIZE = 4           # Nhỏ vì SAM2-large tốn VRAM
+TRAIN_BATCH_SIZE = 1           # RTX 3050 4GB: batch=1 cho SAM2-Large
 LEARNING_RATE    = 1e-4
-NUM_EPOCHS       = 30
-WARMUP_EPOCHS    = 3
+NUM_EPOCHS       = 10          # Giảm từ 30 → 10 vì dataset nhỏ (~700 masks)
+WARMUP_EPOCHS    = 1
 WEIGHT_DECAY     = 0.01
 
 # Số ảnh fail có mask tối thiểu để bắt đầu fine-tune

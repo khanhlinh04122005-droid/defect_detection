@@ -118,11 +118,18 @@ class PipelineEngine:
         }
 
         if self.stage12_only:
-            inp = _build_input(self.category, s1, result["stage2"])
+            inp = _build_input(self.category, result["stage1"], result["stage2"])
             out = decide(inp)
             result["decision"] = _format_decision(out)
             result["elapsed_ms"] = round((time.time() - t_start) * 1000)
             return result
+
+        # Unload Stage 2 trước khi load Stage 3 — tránh OOM trên 4GB VRAM
+        self._stage2 = None
+        import gc, torch as _torch
+        gc.collect()
+        if _torch.cuda.is_available():
+            _torch.cuda.empty_cache()
 
         # Stage 3 — VLM
         t3 = time.time()
@@ -134,7 +141,7 @@ class PipelineEngine:
         result["stage3"] = {**vlm_out, "elapsed_ms": round((time.time() - t3) * 1000)}
 
         # Stage 4 — Decision
-        inp = _build_input(self.category, s1, result["stage2"], result["stage3"])
+        inp = _build_input(self.category, result["stage1"], result["stage2"], result["stage3"])
         out = decide(inp)
         result["decision"] = _format_decision(out)
         result["elapsed_ms"] = round((time.time() - t_start) * 1000)

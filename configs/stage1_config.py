@@ -6,8 +6,8 @@ class Stage1Config:
         self.patch_stride = 1
 
         self.memory_bank = {
-            "coreset_ratio": 0.1,
-            "max_samples": 50000
+            "coreset_ratio": 0.02,   # 2% → ~10K samples
+            "max_samples": 10000     # Hard cap 10K samples
         }
 
         self.anomaly = {
@@ -39,7 +39,7 @@ class Stage1Config:
 category_tuning = {
     # === TSfabrics (dataset chính) ===
     # Vải T1 — dệt thoi, 93K frames. k_nearest=9, percentile=99.0 (thực nghiệm tốt cho video-frame)
-    "tsfabric_T1": {"feature_layers": [9, 12, 15, 18], "k_nearest": 9,  "threshold_percentile": 99.0},
+    "tsfabric_T1": {"feature_layers": [12, 18], "k_nearest": 9,  "threshold_percentile": 88.0},
     # Vải T2 — cấu trúc dệt khác, k=11 để bắt nhiều neighbour hơn
     "tsfabric_T2": {"feature_layers": [9, 12, 15, 18], "k_nearest": 11, "threshold_percentile": 99.0},
     # Vải T3 — dùng layer thấp hơn [6,9,12,15] để nắm texture mịn hơn

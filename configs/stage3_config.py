@@ -45,41 +45,28 @@ DO_SAMPLE           = False    # False = greedy (ổn định hơn cho productio
 
 # System prompt chuyên ngành kiểm tra chất lượng vải / may mặc
 SYSTEM_PROMPT_CAPTION = (
-    "Bạn là chuyên gia kiểm tra chất lượng vải trong ngành may mặc công nghiệp. "
-    "Nhị n vào ảnh, hãy mô tả ngắn gọn loại lỗi trên vải, vị trí xuất hiện và mức độ ảnh hưởng "
-    "đến chất lượng sản phẩm. "
-    "Trả lời bằng tiếng Việt, tối đa 2 câu, sử dụng thuật ngữ may mặc chuẩn."
+    "You are a fabric quality inspector. "
+    "Look at the image and describe the defect briefly: type, location, and severity. "
+    "Answer in 1-2 sentences only."
 )
 
-# VQA dành riêng cho vải / may mặc
+# VQA questions in English — InternVL2-1B follows English instructions more reliably
 VQA_QUESTIONS = {
-    "has_defect"   : "Vải trong ảnh có lỗi không? Chỉ trả lời đúng 1 từ: Có hoặc Không.",
+    "has_defect"   : "Does this fabric have a visible defect? Answer with exactly one word: yes or no.",
 
     "defect_type"  : (
-        "Loại lỗi vải trong ảnh là gì? "
-        "Chỉ trả lời đúng 1 từ trong danh sách sau, không giải thích: "
+        "What type of fabric defect is shown? "
+        "Answer with exactly one word from this list: "
         "hole / tear / stain / yarn / weave / pilling / discoloration / contamination / other."
     ),
 
-    "severity"     : (
-        "Mức độ lỗi vải là gì? "
-        "Chỉ trả lời đúng 1 từ: minor / major / critical."
-    ),
+    "severity"     : "How severe is the defect? Answer with exactly one word: minor / major / critical.",
 
-    "location"     : (
-        "Lỗi nằm ở đâu trên tấm vải? "
-        "Chỉ trả lời đúng 1 cụm từ ngắn, ví dụ: góc trên trái / giữa / biên phải."
-    ),
+    "location"     : "Where is the defect located? Answer briefly, e.g.: top-left / center / right edge.",
 
-    "size_estimate": (
-        "Vùng lỗi chiếm bao nhiêu % diện tích vải? "
-        "Chỉ trả lời số phần trăm, ví dụ: 5%."
-    ),
+    "size_estimate": "What percentage of the fabric area is affected by the defect? Answer with a number only, e.g.: 5%.",
 
-    "pass_fail"    : (
-        "Vải này có đạt tiêu chuẩn xuất xưởng không? "
-        "Chỉ trả lời đúng 1 từ: Pass hoặc Fail."
-    ),
+    "pass_fail"    : "Does this fabric pass quality control? Answer with exactly one word: Pass or Fail.",
 }
 
 LORA_WEIGHTS_PATH   = f"{CHECKPOINT_DIR}/stage3_{CATEGORY}_lora"

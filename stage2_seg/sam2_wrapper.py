@@ -51,18 +51,25 @@ class SAM2Wrapper(nn.Module):
         self.to(device)
 
     def _load_sam2(self):
-        """
-        Load SAM2 qua sam2 package (Meta).
-        Cần cài: pip install git+https://github.com/facebookresearch/segment-anything-2
-        """
+        """Load SAM2 với fp16 + gradient checkpointing để fit 4GB VRAM."""
         try:
+            import torch
             from sam2.build_sam import build_sam2
             from sam2.sam2_image_predictor import SAM2ImagePredictor
 
+            torch.cuda.empty_cache()
+
             sam2_model = build_sam2(SAM2_CONFIG, SAM2_WEIGHTS, device=self.device)
+
+            # Không .half() thủ công — dùng autocast trong encode_for_training
+
+            # Gradient checkpointing: đổi activation memory lấy compute time
+            if hasattr(sam2_model.image_encoder.trunk, "use_checkpoint"):
+                sam2_model.image_encoder.trunk.use_checkpoint = True
+
             self.predictor     = SAM2ImagePredictor(sam2_model)
             self.image_encoder = sam2_model.image_encoder
-            print(f"[SAM2Wrapper] SAM2 loaded — config: {SAM2_CONFIG}")
+            print(f"[SAM2Wrapper] SAM2 loaded (bfloat16 autocast) — config: {SAM2_CONFIG}")
 
         except ImportError:
             raise ImportError(
@@ -135,6 +142,35 @@ class SAM2Wrapper(nn.Module):
                 prompt["box"] = np.array([x0, y0, x1, y1])
 
         return prompt
+
+    def encode_for_training(self, image_np: np.ndarray):
+        """
+        Encode image với gradient (dùng trong training loop).
+        Bypass SAM2ImagePredictor.set_image() vì nó chạy @no_grad.
+
+        Returns:
+            features: dict với 'image_embed' (1,C,H,W) và 'high_res_feats' (list)
+            img_pe:   dense positional encoding từ prompt encoder
+        """
+        sam_model = self.predictor.model
+
+        img_t = self.predictor._transforms(image_np).unsqueeze(0).to(self.device)
+
+        # autocast: PyTorch tự xử lý fp16 cho image encoder (tiết kiệm VRAM)
+        # Không dùng .half() thủ công vì forward_image gọi cả conv trong mask decoder
+        # forward_image trong autocast context của caller (train.py)
+        backbone_out = sam_model.forward_image(img_t)
+        _, vision_feats, _, _ = sam_model._prepare_backbone_features(backbone_out)
+
+        bb_feat_sizes = [(256, 256), (128, 128), (64, 64)]
+        feats = [
+            feat.permute(1, 2, 0).view(1, -1, *feat_size)
+            for feat, feat_size in zip(vision_feats[::-1], bb_feat_sizes[::-1])
+        ][::-1]
+
+        features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
+        img_pe   = sam_model.sam_prompt_encoder.get_dense_pe()
+        return features, img_pe
 
     @torch.no_grad()
     def predict_mask(

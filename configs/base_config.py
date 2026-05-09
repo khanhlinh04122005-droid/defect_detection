@@ -62,7 +62,7 @@ CHECKPOINT_DIR = "outputs/checkpoints"
 
 # ── Hardware & Seed ─────────────────────────────────────────────────
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
-NUM_WORKERS = 4
+NUM_WORKERS = 0   # Windows: luôn 0 để tránh crash DataLoader multiprocessing
 PIN_MEMORY  = True
 SEED        = 42
 IMAGE_SIZE  = (224, 224)

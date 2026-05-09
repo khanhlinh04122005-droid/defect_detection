@@ -147,26 +147,19 @@ class InternVL2Wrapper:
 
     def _load_lora_weights(self, path: str):
         try:
-            import torch
-            from safetensors.torch import load_file
             from pathlib import Path
+            from peft import PeftModel
 
-            lm = self.model.language_model
-            # Load adapter weights vào PeftModel đã inject
-            adapter_file = Path(path) / "adapter_model.safetensors"
-            bin_file     = Path(path) / "adapter_model.bin"
-
-            if adapter_file.exists():
-                state_dict = load_file(str(adapter_file))
-            elif bin_file.exists():
-                state_dict = torch.load(str(bin_file), map_location="cpu")
-            else:
-                print(f"[InternVL2] Warning: no adapter weights found in {path}")
+            if not (Path(path) / "adapter_config.json").exists():
+                print(f"[InternVL2] Warning: no adapter_config.json in {path}")
                 return
 
-            missing, unexpected = lm.load_state_dict(state_dict, strict=False)
-            print(f"[InternVL2] LoRA weights loaded ← {path} "
-                  f"(missing={len(missing)}, unexpected={len(unexpected)})")
+            lm = self.model.language_model
+            # Dùng PEFT load_adapter thay vì load_state_dict thủ công
+            # → tránh key mismatch khi checkpoint được save bằng save_pretrained()
+            lm.load_adapter(path, adapter_name="default")
+            lm.set_adapter("default")
+            print(f"[InternVL2] LoRA weights loaded ← {path}")
         except Exception as e:
             print(f"[InternVL2] Warning loading LoRA: {e}")
 
