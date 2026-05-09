@@ -93,11 +93,12 @@ class PipelineEngine:
         result["stage1"]["elapsed_ms"] = round((time.time() - t1) * 1000)
 
         if self.stage1_only or s1["prediction"] == "Pass":
-            # Ảnh pass → skip stage 2-3
             if s1["prediction"] == "Pass":
                 result["decision"] = _pass_decision()
             else:
                 result["decision"] = _fail_decision_stage1_only(s1)
+            result["stage2"] = {}
+            result["stage3"] = {}
             result["elapsed_ms"] = round((time.time() - t_start) * 1000)
             return result
 
@@ -154,20 +155,30 @@ class PipelineEngine:
 def _build_input(category, s1, s2=None, s3=None) -> DecisionInput:
     s2 = s2 or {}
     s3 = s3 or {}
+
+    # Tính mask_iou an toàn — mask có thể là numpy array hoặc None
+    mask_np = s2.get("mask")
+    mask_area = s2.get("area_ratio", 0.0)
+    if mask_np is not None and hasattr(mask_np, "sum"):
+        total = mask_np.size or 1
+        mask_area = float(mask_np.sum()) / total
+
     return DecisionInput(
-        anomaly_score    = s1.get("score", 0.0),
-        stage1_threshold = s1.get("threshold", 0.5),
+        anomaly_score    = float(s1.get("score", 0.0)),
+        stage1_threshold = float(s1.get("threshold", 0.5)),
         stage1_pred      = s1.get("prediction", "Pass"),
-        mask_area_ratio  = s2.get("area_ratio", 0.0),
-        sam_confidence   = s2.get("confidence", 0.0),
-        defect_type      = s3.get("defect_type", "unknown"),
-        severity         = s3.get("severity",    "unknown"),
-        location         = s3.get("location",    "unknown"),
-        vlm_pass_fail    = s3.get("pass_fail",   "Pass"),
-        vlm_has_defect   = s3.get("has_defect",  False),
-        vlm_confidence   = s3.get("confidence",  0.0),
-        caption          = s3.get("caption",     ""),
+        mask_iou         = float(s2.get("iou", 0.0)),
+        mask_area_ratio  = float(mask_area),
+        sam_confidence   = float(s2.get("confidence", 0.0)),
+        defect_type      = s3.get("defect_type", "unknown") or "unknown",
+        severity         = s3.get("severity",    "unknown") or "unknown",
+        location         = s3.get("location",    "unknown") or "unknown",
+        vlm_pass_fail    = s3.get("pass_fail",   "Pass")   or "Pass",
+        vlm_has_defect   = bool(s3.get("has_defect", False)),
+        vlm_confidence   = float(s3.get("confidence", 0.0)),
+        caption          = s3.get("caption", "") or "",
         category         = category,
+        image_path       = s1.get("image_path", ""),
     )
 
 

@@ -6,6 +6,8 @@ from typing import Dict
 from configs.base_config import DEVICE, WEIGHTS_DIR
 from configs.stage3_config import (
     VLM_MODEL_NAME,
+    LOAD_IN_4BIT,
+    LOAD_IN_8BIT,
     LORA_RANK,
     LORA_ALPHA,
     LORA_DROPOUT,
@@ -63,28 +65,37 @@ class InternVL2Wrapper:
 
         print(f"[InternVL2] Loading model: {model_id}")
 
-        # Tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             trust_remote_code=True,
             use_fast=False,
         )
 
-        # Dùng 8-bit quantization để tránh lỗi meta tensor
-        bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+        # Chọn quantization theo config
+        if LOAD_IN_4BIT:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,  # bfloat16 ổn định hơn float16
+                bnb_4bit_use_double_quant=True,
+            )
+        elif LOAD_IN_8BIT:
+            bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+        else:
+            bnb_config = None
 
-        # Model — KHÔNG dùng low_cpu_mem_usage khi cần inject LoRA
-        self.model = AutoModel.from_pretrained(
-            model_id,
+        load_kwargs = dict(
             trust_remote_code=True,
             torch_dtype=torch.float16,
-            quantization_config=bnb_config,
             device_map="auto",
         )
+        if bnb_config is not None:
+            load_kwargs["quantization_config"] = bnb_config
 
+        self.model = AutoModel.from_pretrained(model_id, **load_kwargs)
         self.model.eval()
 
-        print("[InternVL2] Model loaded successfully")
+        print(f"[InternVL2] Model loaded | 4bit={LOAD_IN_4BIT} 8bit={LOAD_IN_8BIT}")
 
     def _inject_lora(self):
 
@@ -98,10 +109,14 @@ class InternVL2Wrapper:
         except ImportError:
             raise ImportError("pip install peft")
 
-        print("[InternVL2] Injecting LoRA...")
+        print("[InternVL2] Injecting LoRA into language_model...")
 
-        # BẮT BUỘC khi dùng quantization — fix lỗi meta tensor
-        self.model = prepare_model_for_kbit_training(self.model)
+        # Apply LoRA chỉ vào language_model bên trong InternVL2
+        # Tránh lỗi inputs_embeds khi wrap toàn bộ InternVLChatModel với PEFT
+        lm = self.model.language_model
+
+        if LOAD_IN_4BIT or LOAD_IN_8BIT:
+            lm = prepare_model_for_kbit_training(lm, use_gradient_checkpointing=False)
 
         lora_cfg = LoraConfig(
             r=LORA_RANK,
@@ -112,9 +127,10 @@ class InternVL2Wrapper:
             bias="none",
         )
 
-        self.model = get_peft_model(self.model, lora_cfg)
+        self.model.language_model = get_peft_model(lm, lora_cfg)
 
-        trainable, total = self._count_params()
+        trainable = sum(p.numel() for p in self.model.language_model.parameters() if p.requires_grad)
+        total     = sum(p.numel() for p in self.model.parameters())
 
         print(
             f"[InternVL2] LoRA injected | "
@@ -123,47 +139,25 @@ class InternVL2Wrapper:
         )
 
     def _count_params(self):
-
-        trainable = sum(
-            p.numel()
-            for p in self.model.parameters()
-            if p.requires_grad
-        )
-
-        total = sum(
-            p.numel()
-            for p in self.model.parameters()
-        )
-
+        trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        total     = sum(p.numel() for p in self.model.parameters())
         return trainable, total
 
     def _load_lora_weights(self, path: str):
-
         try:
             from peft import PeftModel
-
-            self.model = PeftModel.from_pretrained(
-                self.model,
-                path
+            self.model.language_model = PeftModel.from_pretrained(
+                self.model.language_model, path
             )
-
             print(f"[InternVL2] LoRA weights loaded ← {path}")
-
         except Exception as e:
             print(f"[InternVL2] Warning: {e}")
 
     def save_lora(self, path: str = None):
-
         save_path = path or LORA_WEIGHTS_PATH
-
-        Path(save_path).mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        self.model.save_pretrained(save_path)
+        Path(save_path).mkdir(parents=True, exist_ok=True)
+        self.model.language_model.save_pretrained(save_path)
         self.tokenizer.save_pretrained(save_path)
-
         print(f"[InternVL2] LoRA saved → {save_path}")
 
     def _build_pixel_values(self, image_np):
@@ -185,7 +179,7 @@ class InternVL2Wrapper:
         pixel_values = transform(image).unsqueeze(0)
 
         pixel_values = pixel_values.to(
-            dtype=torch.float16,
+            dtype=torch.bfloat16,
             device=self.device,
         )
 
@@ -263,12 +257,7 @@ class InternVL2Wrapper:
         return answers
 
     def get_trainable_params(self):
-
-        return [
-            p
-            for p in self.model.parameters()
-            if p.requires_grad
-        ]
+        return [p for p in self.model.language_model.parameters() if p.requires_grad]
 
     def train_mode(self):
 

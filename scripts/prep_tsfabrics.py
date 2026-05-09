@@ -94,7 +94,7 @@ def prep_sequence(
 
     # Đọc CSV labels
     rows = []
-    with open(csv_file, newline="") as f:
+    with open(csv_file, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             rows.append((row["FileName"], int(row["Label"])))

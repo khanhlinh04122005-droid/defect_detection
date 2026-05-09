@@ -53,7 +53,8 @@ def train(args):
         ds_tok,
         batch_size  = TRAIN_BATCH_SIZE,
         shuffle     = True,
-        num_workers = 2,
+        num_workers = 0,       # Windows: >0 gây lỗi với multiprocessing
+        pin_memory  = False,
         collate_fn  = collate_vlm,
     )
 
@@ -83,19 +84,14 @@ def train(args):
         for batch_idx, batch in enumerate(dl):
             input_ids      = batch["input_ids"].to(DEVICE)
             attention_mask = batch["attention_mask"].to(DEVICE)
-            images         = batch["image"]      # list numpy
+            labels         = batch["labels"].to(DEVICE)
 
-            # Build pixel_values cho từng ảnh trong batch
-            pixel_values = torch.cat(
-                [model._build_pixel_values(img) for img in images], dim=0
-            )
-
-            # Forward — InternVL2 tính language modeling loss
-            outputs = model.model(
+            # Train language_model trực tiếp (text-only)
+            # InternVLChatModel.forward() không hỗ trợ inputs_embeds từ PEFT
+            outputs = model.model.language_model(
                 input_ids      = input_ids,
                 attention_mask = attention_mask,
-                pixel_values   = pixel_values,
-                labels         = input_ids,   # causal LM: labels = input_ids
+                labels         = labels,
             )
             loss = outputs.loss / GRAD_ACCUMULATION
             loss.backward()
@@ -112,11 +108,15 @@ def train(args):
                 step += 1
 
         avg_loss = epoch_loss / max(len(dl), 1)
+        vram_gb = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0
         console.print(
             f"Epoch {epoch:3d}/{NUM_EPOCHS}  "
             f"loss={avg_loss:.4f}  "
-            f"lr={optimizer.param_groups[0]['lr']:.2e}"
+            f"lr={optimizer.param_groups[0]['lr']:.2e}  "
+            f"VRAM={vram_gb:.1f}GB"
         )
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     console.print(f"\nTổng thời gian: {time.time() - t0:.1f}s")
 

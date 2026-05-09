@@ -19,19 +19,19 @@ SEVERITY_RANK = {
     "unknown":  0,
 }
 
-# Loại lỗi luôn Fail dù score thấp
+# Loại lỗi luôn Fail — khớp với VQA_QUESTIONS defect_type trong stage3_config.py
 ALWAYS_FAIL_TYPES = {
-    "missing",          # Thiếu bộ phận
-    "crack",            # Nứt vỡ
-    "contamination",    # Nhiễm bẩn nghiêm trọng
+    "hole",             # Thủng vải
+    "tear",             # Rách vải
+    "contamination",    # Bẩn dầu mỡ
 }
 
-# Loại lỗi Fail chỉ khi severity ≥ major
+# Loại lỗi Fail khi severity ≥ major
 MAJOR_FAIL_TYPES = {
-    "scratch",
-    "dent",
-    "discoloration",
-    "burr",
+    "stain",            # Loang màu
+    "weave",            # Lỗi dệt
+    "discoloration",    # Bạc màu
+    "yarn",             # Sợi thừa/thiếu (nếu major/critical)
 }
 
 

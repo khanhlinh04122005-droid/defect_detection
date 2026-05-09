@@ -1,0 +1,28 @@
+name: defect_detection
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch::pytorch>=2.4.0
+  - pytorch::torchvision
+  - pytorch::pytorch-cuda=12.1
+  - pip
+  - pip:
+    - transformers>=4.45.0
+    - peft>=0.13.0
+    - accelerate>=0.34.0
+    - bitsandbytes>=0.43.3
+    - einops
+    - timm
+    - sentencepiece
+    - pillow
+    - numpy
+    - scipy
+    - scikit-learn
+    - opencv-python-headless
+    - rich
+    - tqdm
+    - matplotlib

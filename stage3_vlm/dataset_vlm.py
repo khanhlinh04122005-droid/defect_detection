@@ -119,15 +119,34 @@ class VLMDataset(Dataset):
 
         # Tokenize nếu có tokenizer
         if self.tokenizer is not None:
+            # Tokenize full_text = prompt + target để model học predict caption
+            full_text = prompt + " " + target
+
             enc = self.tokenizer(
-                target,
-                truncation  = True,
-                max_length  = self.max_length,
-                padding     = "max_length",
+                full_text,
+                truncation     = True,
+                max_length     = self.max_length,
+                padding        = "max_length",
                 return_tensors = "pt",
             )
-            item["input_ids"]      = enc["input_ids"].squeeze(0)
-            item["attention_mask"] = enc["attention_mask"].squeeze(0)
+            input_ids      = enc["input_ids"].squeeze(0)
+            attention_mask = enc["attention_mask"].squeeze(0)
+
+            # Mask phần prompt trong labels bằng -100 (không tính loss)
+            prompt_enc = self.tokenizer(
+                prompt,
+                truncation     = True,
+                max_length     = self.max_length,
+                return_tensors = "pt",
+            )
+            prompt_len = prompt_enc["input_ids"].shape[1]
+
+            labels = input_ids.clone()
+            labels[:prompt_len] = -100   # bỏ qua loss trên prompt
+
+            item["input_ids"]      = input_ids
+            item["attention_mask"] = attention_mask
+            item["labels"]         = labels
 
         return item
 

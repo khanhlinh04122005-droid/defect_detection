@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(conda env *)",
+      "PowerShell(conda run *)"
+    ]
+  }
+}

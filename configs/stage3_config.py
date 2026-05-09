@@ -1,10 +1,9 @@
 from configs.base_config import WEIGHTS_DIR, CHECKPOINT_DIR, CATEGORY
 
-VLM_MODEL_NAME   = "OpenGVLab/InternVL2-8B"   # HuggingFace model ID
+VLM_MODEL_NAME   = "OpenGVLab/InternVL2-1B"   # 1B: ~2GB VRAM, phù hợp RTX 3050 4GB
 VLM_WEIGHTS      = f"{WEIGHTS_DIR}/internvl2"
-LOAD_IN_8BIT     = False       # True → tiết kiệm VRAM nhưng chậm hơn
-LOAD_IN_4BIT     = False       # True → cần bitsandbytes, mất chút độ chính xác
-# Với RTX 3090/4090 (24GB VRAM): để cả 2 là False → full precision
+LOAD_IN_8BIT     = False
+LOAD_IN_4BIT     = True        # 4-bit quantization cho 4GB VRAM
 
 LORA_RANK        = 16
 LORA_ALPHA       = 32
@@ -15,8 +14,8 @@ LORA_TARGET_MODULES = [
 ]
 
 
-TRAIN_BATCH_SIZE    = 2        # InternVL2-8B lớn, batch nhỏ
-GRAD_ACCUMULATION   = 8        # Effective batch = 2 × 8 = 16
+TRAIN_BATCH_SIZE    = 1        # RTX 3050 4GB: batch=1
+GRAD_ACCUMULATION   = 16       # Effective batch = 1 × 16 = 16
 LEARNING_RATE       = 2e-5
 NUM_EPOCHS          = 10
 WARMUP_RATIO        = 0.1
