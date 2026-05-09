@@ -86,10 +86,14 @@ class InternVL2Wrapper:
         else:
             bnb_config = None   # fp16 thuần — dùng cho inference
 
+        # device_map="auto" gây meta tensor error với bitsandbytes trên một số môi trường
+        # Dùng {"": device} để force toàn bộ model lên 1 GPU cụ thể
+        device_map = {"": self.device} if bnb_config is not None else "auto"
+
         load_kwargs = dict(
             trust_remote_code=True,
             torch_dtype=torch.float16,
-            device_map="auto",
+            device_map=device_map,
         )
         if bnb_config is not None:
             load_kwargs["quantization_config"] = bnb_config
