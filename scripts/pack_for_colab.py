@@ -48,10 +48,10 @@ DATA_ZIP = ROOT / "data_tsfabric_T1.zip"
 CATEGORY = "tsfabric_T1"
 
 data_dirs = [
-    (ROOT / "data" / "pass" / "train" / CATEGORY, f"defect_detection/data/pass/train/{CATEGORY}"),
-    (ROOT / "data" / "fail" / "train" / CATEGORY, f"defect_detection/data/fail/train/{CATEGORY}"),
-    (ROOT / "data" / "fail" / "masks" / CATEGORY, f"defect_detection/data/fail/masks/{CATEGORY}"),
-    (ROOT / "data" / "vlm_ann",                   "defect_detection/data/vlm_ann"),
+    (ROOT / "data" / "pass" / "train" / CATEGORY, f"data/pass/train/{CATEGORY}"),
+    (ROOT / "data" / "fail" / "train" / CATEGORY, f"data/fail/train/{CATEGORY}"),
+    (ROOT / "data" / "fail" / "masks" / CATEGORY, f"data/fail/masks/{CATEGORY}"),
+    (ROOT / "data" / "vlm_ann",                   "data/vlm_ann"),
 ]
 
 print("\nĐang tạo data_tsfabric_T1.zip...")
