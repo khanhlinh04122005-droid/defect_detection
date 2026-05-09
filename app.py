@@ -198,7 +198,7 @@ CSS   = """
 .stage-box { background: #f8f9fa; border-radius: 8px; padding: 12px; }
 """
 
-with gr.Blocks(title=TITLE) as demo:
+with gr.Blocks(title=TITLE, css=CSS, theme=gr.themes.Soft()) as demo:
     gr.Markdown(f"# {TITLE}")
     gr.Markdown(
         f"Backend: **{'Ollama (CPU)' if USE_OLLAMA else 'InternVL2 (GPU)'}** | "
@@ -234,7 +234,7 @@ with gr.Blocks(title=TITLE) as demo:
         "mức độ ảnh hưởng, cách xử lý...*"
     )
 
-    chatbot = gr.Chatbot(height=320, label="Chat với AI")
+    chatbot = gr.Chatbot(height=320, label="Chat với AI", type="messages")
     with gr.Row():
         chat_input = gr.Textbox(
             placeholder="Ví dụ: Lỗi này có nghiêm trọng không? / What caused this defect?",
@@ -259,11 +259,11 @@ with gr.Blocks(title=TITLE) as demo:
         if not message.strip():
             return history, ""
         history = history or []
-        history.append([message, None])
         response = ""
         for chunk in chat_fn(message, history, result, image):
             response = chunk
-        history[-1][1] = response
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": response})
         return history, ""
 
     chat_btn.click(
@@ -284,6 +284,4 @@ if __name__ == "__main__":
         server_port=args.port,
         share=args.share,
         inbrowser=not args.share,
-        css=CSS,
-        theme=gr.themes.Soft(),
     )
