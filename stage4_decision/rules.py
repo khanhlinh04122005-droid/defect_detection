@@ -117,9 +117,9 @@ class DecisionEngine:
         else:
             # Weighted majority voting
             fail_weight = (
-                0.4 * (stage1_vote == "Fail") +
+                0.6 * (stage1_vote == "Fail") +
                 0.2 * (stage2_vote == "Fail") +
-                0.4 * (stage3_vote == "Fail")
+                0.2 * (stage3_vote == "Fail")
             )
             final    = "Fail" if fail_weight >= 0.5 else "Pass"
             conf     = max(fail_weight, 1 - fail_weight)
