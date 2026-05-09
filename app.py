@@ -1,16 +1,10 @@
 """
-app.py — Gradio UI cho Fabric Defect Detection Pipeline
+app.py - Gradio UI cho Fabric Defect Detection Pipeline
 
-Cách chạy:
-    # GPU machine
-    set PYTHONPATH=D:\Projects\defect_detection
-    python app.py
-
-    # CPU machine (Dell Vostro) — cần Ollama đang chạy
-    python app.py --ollama
-
-    # Colab — tạo public URL
-    python app.py --share
+Cach chay:
+    GPU machine  : python app.py
+    CPU (Ollama) : python app.py --ollama
+    Colab        : python app.py --share
 """
 
 import argparse
@@ -204,7 +198,7 @@ CSS   = """
 .stage-box { background: #f8f9fa; border-radius: 8px; padding: 12px; }
 """
 
-with gr.Blocks(title=TITLE, css=CSS, theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title=TITLE) as demo:
     gr.Markdown(f"# {TITLE}")
     gr.Markdown(
         f"Backend: **{'Ollama (CPU)' if USE_OLLAMA else 'InternVL2 (GPU)'}** | "
@@ -231,7 +225,7 @@ with gr.Blocks(title=TITLE, css=CSS, theme=gr.themes.Soft()) as demo:
     with gr.Accordion("Chi tiết từng Stage", open=False):
         details_out = gr.Markdown()
 
-    gr.Divider()
+    gr.HTML("<hr style='margin:16px 0;border-color:#e0e0e0'>")
 
     # ── Chat ──
     gr.Markdown("### 💬 Chat về kết quả phân tích")
@@ -290,4 +284,6 @@ if __name__ == "__main__":
         server_port=args.port,
         share=args.share,
         inbrowser=not args.share,
+        css=CSS,
+        theme=gr.themes.Soft(),
     )
