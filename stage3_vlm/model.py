@@ -32,9 +32,11 @@ class InternVL2Wrapper:
         device: str = DEVICE,
         use_lora: bool = True,
         lora_weights: str = None,
+        force_fp16: bool = False,   # True = bỏ quantization, dùng fp16 thuần
     ):
         self.device = device
         self.use_lora = use_lora
+        self.force_fp16 = force_fp16
 
         self.model = None
         self.tokenizer = None
@@ -72,17 +74,17 @@ class InternVL2Wrapper:
         )
 
         # Chọn quantization theo config
-        if LOAD_IN_4BIT:
+        if not self.force_fp16 and LOAD_IN_4BIT:
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,  # bfloat16 ổn định hơn float16
+                bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_use_double_quant=True,
             )
-        elif LOAD_IN_8BIT:
+        elif not self.force_fp16 and LOAD_IN_8BIT:
             bnb_config = BitsAndBytesConfig(load_in_8bit=True)
         else:
-            bnb_config = None
+            bnb_config = None   # fp16 thuần — dùng cho inference
 
         load_kwargs = dict(
             trust_remote_code=True,
@@ -145,13 +147,28 @@ class InternVL2Wrapper:
 
     def _load_lora_weights(self, path: str):
         try:
-            from peft import PeftModel
-            self.model.language_model = PeftModel.from_pretrained(
-                self.model.language_model, path
-            )
-            print(f"[InternVL2] LoRA weights loaded ← {path}")
+            import torch
+            from safetensors.torch import load_file
+            from pathlib import Path
+
+            lm = self.model.language_model
+            # Load adapter weights vào PeftModel đã inject
+            adapter_file = Path(path) / "adapter_model.safetensors"
+            bin_file     = Path(path) / "adapter_model.bin"
+
+            if adapter_file.exists():
+                state_dict = load_file(str(adapter_file))
+            elif bin_file.exists():
+                state_dict = torch.load(str(bin_file), map_location="cpu")
+            else:
+                print(f"[InternVL2] Warning: no adapter weights found in {path}")
+                return
+
+            missing, unexpected = lm.load_state_dict(state_dict, strict=False)
+            print(f"[InternVL2] LoRA weights loaded ← {path} "
+                  f"(missing={len(missing)}, unexpected={len(unexpected)})")
         except Exception as e:
-            print(f"[InternVL2] Warning: {e}")
+            print(f"[InternVL2] Warning loading LoRA: {e}")
 
     def save_lora(self, path: str = None):
         save_path = path or LORA_WEIGHTS_PATH
@@ -179,7 +196,7 @@ class InternVL2Wrapper:
         pixel_values = transform(image).unsqueeze(0)
 
         pixel_values = pixel_values.to(
-            dtype=torch.bfloat16,
+            dtype=torch.float16,
             device=self.device,
         )
 

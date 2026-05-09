@@ -25,6 +25,7 @@ class VLMInference:
             device       = device,
             use_lora     = True,
             lora_weights = lora_weights or LORA_WEIGHTS_PATH,
+            force_fp16   = True,   # inference dùng fp16 thuần, tránh dtype mismatch
         )
         self.model.eval_mode()
 

@@ -53,36 +53,32 @@ SYSTEM_PROMPT_CAPTION = (
 
 # VQA dành riêng cho vải / may mặc
 VQA_QUESTIONS = {
-    # Phát hiện có lỗi không
-    "has_defect"   : "Vải trong ảnh có lỗi không? Trả lời: Có hoặc Không.",
+    "has_defect"   : "Vải trong ảnh có lỗi không? Chỉ trả lời đúng 1 từ: Có hoặc Không.",
 
-    # Loại lỗi vải thường gặp
     "defect_type"  : (
-        "Loại lỗi vải trong ảnh là gì? Chọn một: "
-        "hole (thủng) / tear (rách) / stain (loang màu) / "
-        "yarn (sợi thừa/thiếu) / weave (lỗi dệt) / "
-        "pilling (xơ vải) / discoloration (bạc màu) / "
-        "contamination (bẩn dầu mỡ) / other (khác)."
+        "Loại lỗi vải trong ảnh là gì? "
+        "Chỉ trả lời đúng 1 từ trong danh sách sau, không giải thích: "
+        "hole / tear / stain / yarn / weave / pilling / discoloration / contamination / other."
     ),
 
-    # Mức độ nghiêm trọng
     "severity"     : (
-        "Mức độ lỗi là gì? "
-        "minor (nhẹ, không ảnh hưởng cấu trúc) / "
-        "major (nặng, ảnh hưởng ngoại quan) / "
-        "critical (nghiêm trọng, không thể xuất xưởng)."
+        "Mức độ lỗi vải là gì? "
+        "Chỉ trả lời đúng 1 từ: minor / major / critical."
     ),
 
-    # Vị trí trên tấm vải
-    "location"     : "Lỗi nằm ở vị trí nào trên tấm vải? (góc trên trái / giữa / biên phải / ...)",
+    "location"     : (
+        "Lỗi nằm ở đâu trên tấm vải? "
+        "Chỉ trả lời đúng 1 cụm từ ngắn, ví dụ: góc trên trái / giữa / biên phải."
+    ),
 
-    # Kích thước ước tính
-    "size_estimate": "Kích thước vùng lỗi chiếm bao nhiêu phần trăm diện tích tấm vải? (ước tính %)",
+    "size_estimate": (
+        "Vùng lỗi chiếm bao nhiêu % diện tích vải? "
+        "Chỉ trả lời số phần trăm, ví dụ: 5%."
+    ),
 
-    # Đánh giá xuất xưởng
     "pass_fail"    : (
-        "Dựa vào tiêu chuẩn kiểm tra chất lượng vải, sản phẩm này có đạt tiêu chuẩn xuất xưởng không? "
-        "Trả lời: Pass hoặc Fail."
+        "Vải này có đạt tiêu chuẩn xuất xưởng không? "
+        "Chỉ trả lời đúng 1 từ: Pass hoặc Fail."
     ),
 }
 
